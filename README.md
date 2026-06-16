@@ -1,20 +1,21 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+<!--
+╔══════════════════════════════════════════════════════════════════════╗
+║  DreamSeed 种梦计划 — AI创造者大赛  官方 README 模板                ║
+║                                                                      ║
+║  使用说明：                                                          ║
+║  1. 将本模板放在参赛仓库根目录 README.md 的顶部                       ║
+║  2. 头图使用 DreamField 官方公开活动图片地址                         ║
+║  3. 请保留 DREAMFIELD_README_HEADER_START / END 标识                 ║
+║  4. 分割线以下供创作者自由编写项目内容                               ║
+╚══════════════════════════════════════════════════════════════════════╝
+-->
 
-# Run and deploy your AI Studio app
+<!-- DREAMFIELD_README_HEADER_START -->
 
-This contains everything you need to run your app locally.
+<p align="center">
+  <a href="https://www.dreamfield.top">
+    <img src="https://www.dreamfield.top/dream-field/contest-readme/assets/dreamseed-readme-banner.png" alt="DreamSeed 种梦计划参赛作品" width="100%" />
+  </a>
+</p>
 
-View your app in AI Studio: https://ai.studio/apps/622a7947-35c2-41f5-9177-b40e25bff5c3
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+<!-- DREAMFIELD_README_HEADER_END -->
