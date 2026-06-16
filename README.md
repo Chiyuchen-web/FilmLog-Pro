@@ -50,27 +50,27 @@ FilmLog Pro
 
 
 # 项目结构
-├── App.tsx                      # 主应用：状态管理、路由、业务逻辑
-├── index.tsx                    # 入口：挂载 Provider 层
-├── index.html                   # HTML 模板（含 Tailwind CDN + 暗房模式 CSS）
-├── types.ts                     # 全部类型定义（FilmRecord, DevRecipe, TimerConfig, ReciprocityProfile 等）
-├── vite.config.ts               # Vite 配置（含 Supabase fetch polyfill 别名）
-├── fetch-stub.ts                # 浏览器端 fetch polyfill，解决 Supabase SDK 的 Node 依赖
-├── supabase_schema.sql          # Supabase 数据库建表 SQL
-├── components/
-│   ├── FilmCard.tsx             # 记录卡片（展示 + 图片预览）
-│   ├── RecordEditor.tsx         # 记录编辑器（拍摄 + 冲洗双表单）
-│   ├── FilterBar.tsx            # 搜索筛选栏
-│   ├── DevTimer.tsx             # 冲洗计时器（多阶段倒计时 + 摇晃提示）
-│   ├── ProcessLibrary.tsx       # 工艺库（配方列表 + 编辑 + 拖拽排序）
-│   ├── ReciprocityCalculator.tsx# 互易律失效计算器
-│   ├── SettingsModal.tsx        # 设置（API K
-│   ├── TrashBin.tsx             # 回收站
-│   ├── ConfirmModal.tsx         # 确认弹窗
-│   ├── GlobalErrorBar.tsx       # 全局错误提示条
-│   └── ui/                      # 基础 UI 组件
-│       ├── Button.tsx
-│       ├── Input.tsx
+App.tsx                      # 主应用：状态管理、路由、业务逻辑
+index.tsx                    # 入口：挂载 Provider 层
+index.html                   # HTML 模板（含 Tailwind CDN + 暗房模式 CSS）
+types.ts                     # 全部类型定义（FilmRecord, DevRecipe, TimerConfig, ReciprocityProfile 等）
+vite.config.ts               # Vite 配置（含 Supabase fetch polyfill 别名）
+fetch-stub.ts                # 浏览器端 fetch polyfill，解决 Supabase SDK 的 Node 依赖
+supabase_schema.sql          # Supabase 数据库建表 SQL
+components/
+  FilmCard.tsx             # 记录卡片（展示 + 图片预览）
+  RecordEditor.tsx         # 记录编辑器（拍摄 + 冲洗双表单）
+  FilterBar.tsx            # 搜索筛选栏
+  DevTimer.tsx             # 冲洗计时器（多阶段倒计时 + 摇晃提示）
+  ProcessLibrary.tsx       # 工艺库（配方列表 + 编辑 + 拖拽排序）
+  ReciprocityCalculator.tsx# 互易律失效计算器
+  SettingsModal.tsx        # 设置（API K
+  TrashBin.tsx             # 回收站
+  ConfirmModal.tsx         # 确认弹窗
+  GlobalErrorBar.tsx       # 全局错误提示条
+  ui/                      # 基础 UI 组件
+     Button.tsx
+     Input.tsx
 - 冲洗记录 — 记录冲洗工艺（C-41/E-6/B&W）、显影液/定影液型号与稀释比、是否预湿、冲洗/定影时间
 - 冲洗计时器 — 可配置多阶段计时（预湿→显影→停显→定影→水洗→润湿剂），每个阶段支持独立摇晃/静置参数、倒液时间、循环次数
 - 工艺库 — 保存和复用冲洗配方（DevRecipe），支持评分与备注
@@ -84,8 +84,6 @@ FilmLog Pro
 - 深色/浅色主题 — 支持切换，暗房模式独立于主题
 
 # 技术栈
-┌──────┬────────────────────────────────┐
-
 - 拍摄记录 — 记录胶片型号、画幅（135/120/4x5/8x10）、光圈、快门、闪光灯、拍摄地点及备注，支持图片上传与压缩
 - 冲洗记录 — 记录冲洗工艺（C-41/E-6/B&W）、显影液/定影液型号与稀释比、是否预湿、冲洗/定影时间
 - 冲洗计时器 — 可配置多阶段计时（预湿→显影→停显→定影→水洗→润湿剂），每个阶段支持独立摇晃/静置参数、倒液时间、循环次数
