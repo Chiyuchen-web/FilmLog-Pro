@@ -13,7 +13,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { ReciprocityCalculator } from './components/ReciprocityCalculator';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Button } from './components/ui/Button';
-import { Plus, Film, Loader2, Trash2, X, Globe, Moon, Sun, Timer, Book, Search, Settings, Cloud, ChevronDown, Check, Eye, Calculator } from 'lucide-react';
+import { Plus, Film, Loader2, Trash2, X, Globe, Moon, Sun, Timer, Book, Search, Settings, Cloud, ChevronDown, Check, Eye, Calculator, LogOut } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useToast } from './contexts/ToastContext';
@@ -22,11 +22,10 @@ const App: React.FC = () => {
   const { t, language, setLanguage } = useLanguage();
   const { viewMode, cycleMode, toggleThemeAndSave } = useTheme();
   const { showToast } = useToast();
-  
-  // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('filmlog_auth') === 'true';
-  });
+
+  // Auth State — driven by Supabase Auth session
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const [records, setRecords] = useState<FilmRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,22 +78,24 @@ const App: React.FC = () => {
   const dragOverItem = useRef<number | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-        // Initial Load only if authenticated
-        const init = async () => {
-            try {
-                await loadRecords();
-                // Auto Connect & Sync (Requirements)
-                const hasUrl = localStorage.getItem('filmlog_supabase_url');
-                if (hasUrl) {
-                    performSync(true); 
-                }
-            } catch(e) {
-                console.error("Init failed", e);
-            }
-        };
-        init();
-    }
+    // Check existing Supabase session on mount
+    const checkSession = async () => {
+        try {
+            const user = await storageService.getCurrentUser();
+            setIsAuthenticated(!!user);
+        } catch (e) {
+            console.error("Session check failed", e);
+            setIsAuthenticated(false);
+        } finally {
+            setIsAuthLoading(false);
+        }
+    };
+    checkSession();
+
+    // Listen for auth state changes (sign in, sign out, token refresh)
+    const unsubscribe = storageService.onAuthStateChange((user) => {
+        setIsAuthenticated(!!user);
+    });
 
     const handleClickOutside = (event: MouseEvent) => {
         if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -102,12 +103,40 @@ const App: React.FC = () => {
         }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+        unsubscribe();
+        document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Load data once authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const init = async () => {
+        try {
+            await loadRecords();
+            performSync(true);
+        } catch(e) {
+            console.error("Init failed", e);
+        }
+    };
+    init();
   }, [isAuthenticated]);
 
   const handleLogin = () => {
+    // Auth state is now driven by Supabase session — this callback
+    // just triggers a re-render after the session is established.
     setIsAuthenticated(true);
-    localStorage.setItem('filmlog_auth', 'true');
+  };
+
+  const handleLogout = async () => {
+    try {
+      await storageService.signOut();
+      setIsAuthenticated(false);
+      setRecords([]);
+    } catch (e: any) {
+      console.error("Logout failed", e);
+    }
   };
 
   const handleReturnHome = () => {
@@ -329,6 +358,15 @@ const App: React.FC = () => {
     return result;
   }, [records, filters, sortOption]);
 
+  // Show loading spinner while checking auth session
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen-dynamic flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return <LoginScreen onLogin={handleLogin} />;
   }
@@ -405,6 +443,10 @@ const App: React.FC = () => {
                                 </button>
                                 <button onClick={() => { setIsSettingsOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg flex items-center gap-3">
                                     <span className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 dark:text-gray-300"><Settings className="w-4 h-4" /></span>{t('app.settings')}
+                                </button>
+                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1 mx-2"></div>
+                                <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-3">
+                                    <span className="p-1.5 bg-red-100 dark:bg-red-900/30 rounded-md text-red-500 dark:text-red-400"><LogOut className="w-4 h-4" /></span>{t('app.logout')}
                                 </button>
                             </div>
                         )}

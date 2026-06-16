@@ -1,14 +1,14 @@
 
 import { FilmRecord, DevRecipe, SyncQueueItem, SyncTarget, SyncActionType, ReciprocityProfile } from '../types';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 const STORAGE_KEY = 'filmlog_db_v1';
 const RECIPE_KEY = 'filmlog_recipes_v1';
-const PROFILE_KEY = 'filmlog_reciprocity_v1'; // Reciprocity Profiles
-const QUEUE_KEY = 'filmlog_sync_queue_v1'; // The Cache Pool
+const PROFILE_KEY = 'filmlog_reciprocity_v1';
+const QUEUE_KEY = 'filmlog_sync_queue_v1';
 const TRASH_KEY = 'filmlog_trash_v1';
 
-// Default Keys (Fallback) - In a real production app these should be env vars or securely injected
+// Default Supabase config (anon key is safe to expose; RLS protects the data)
 const DEFAULT_URL = 'https://uvszhvoixngxkfvglgsu.supabase.co';
 const DEFAULT_KEY = 'sb_publishable_qXuAT3dkSzzotjdaWA9Stg_zY4g2RwE';
 
@@ -17,7 +17,6 @@ const getSupabaseConfig = () => {
     let url = typeof window !== 'undefined' ? localStorage.getItem('filmlog_supabase_url') : null;
     let key = typeof window !== 'undefined' ? localStorage.getItem('filmlog_supabase_key') : null;
 
-    // Auto-fill defaults if missing (Requirement: "Already filled by default")
     if (!url) {
         url = DEFAULT_URL;
         if (typeof window !== 'undefined') localStorage.setItem('filmlog_supabase_url', url);
@@ -64,7 +63,6 @@ const getQueue = (): SyncQueueItem[] => {
 
 const addToQueue = (targetId: string, target: SyncTarget, action: SyncActionType, data?: any) => {
     const queue = getQueue();
-    // Optimization: If we are adding a DELETE, we can remove any previous UPSERTs for the same ID to save bandwidth
     let newQueue = queue;
     if (action === 'DELETE') {
         newQueue = queue.filter(q => !(q.targetId === targetId && q.target === target));
@@ -75,7 +73,7 @@ const addToQueue = (targetId: string, target: SyncTarget, action: SyncActionType
         targetId,
         target,
         action,
-        data: data ? JSON.parse(JSON.stringify(data)) : undefined, // Deep copy
+        data: data ? JSON.parse(JSON.stringify(data)) : undefined,
         timestamp: Date.now()
     };
     newQueue.push(item);
@@ -83,7 +81,6 @@ const addToQueue = (targetId: string, target: SyncTarget, action: SyncActionType
     console.log(`[Cache Pool] Added action: ${action} on ${target} (${targetId})`);
 };
 
-// Helper to remove a specific item from queue (safe against concurrent adds)
 const removeFromQueue = (itemId: string) => {
     const currentQueue = getQueue();
     const updatedQueue = currentQueue.filter(q => q.id !== itemId);
@@ -94,7 +91,68 @@ let syncTimeout: any = null;
 let isSyncing = false;
 
 export const storageService = {
-  
+
+  // ==================== Auth ====================
+
+  /** Get the Supabase client (for auth operations) */
+  getClient(): SupabaseClient | null {
+      if (!supabase) initSupabase();
+      return supabase;
+  },
+
+  /** Sign up with email + password */
+  async signUp(email: string, password: string): Promise<User> {
+      if (!supabase) initSupabase();
+      if (!supabase) throw new Error("Supabase not configured");
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      if (!data.user) throw new Error("Registration failed");
+      return data.user;
+  },
+
+  /** Sign in with email + password */
+  async signIn(email: string, password: string): Promise<User> {
+      if (!supabase) initSupabase();
+      if (!supabase) throw new Error("Supabase not configured");
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (!data.user) throw new Error("Login failed");
+      return data.user;
+  },
+
+  /** Sign out */
+  async signOut(): Promise<void> {
+      if (!supabase) return;
+      await supabase.auth.signOut();
+      // Clear local data on sign out
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(RECIPE_KEY);
+      localStorage.removeItem(PROFILE_KEY);
+      localStorage.removeItem(QUEUE_KEY);
+      localStorage.removeItem(TRASH_KEY);
+      localStorage.removeItem('filmlog_auth');
+  },
+
+  /** Get current user (null if not signed in) */
+  async getCurrentUser(): Promise<User | null> {
+      if (!supabase) initSupabase();
+      if (!supabase) return null;
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+  },
+
+  /** Listen for auth state changes */
+  onAuthStateChange(callback: (user: User | null) => void): () => void {
+      if (!supabase) initSupabase();
+      if (!supabase) return () => {};
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          callback(session?.user ?? null);
+      });
+      return () => subscription.unsubscribe();
+  },
+
+  // ==================== Config ====================
+
   reloadConfig() {
       initSupabase();
   },
@@ -107,12 +165,11 @@ export const storageService = {
       if (error && error.code !== 'PGRST116') throw error;
   },
 
-  // --- Read Ops (Local Only) ---
+  // ==================== Read Ops (Local Only) ====================
 
   async getAll(): Promise<FilmRecord[]> {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    // Ensure IDs are strings and filter out soft-deleted items
     return parsed.map((r: any) => ({...r, id: String(r.id)})).filter((r: any) => !r.isDeleted);
   },
 
@@ -129,7 +186,6 @@ export const storageService = {
   },
 
   async getTrash(): Promise<FilmRecord[]> {
-    // Combine soft-deleted items from main storage and legacy trash
     const rawStorage = localStorage.getItem(STORAGE_KEY);
     const storageRecords = rawStorage ? JSON.parse(rawStorage) : [];
     const softDeleted = storageRecords
@@ -140,20 +196,18 @@ export const storageService = {
     const legacyTrash = rawTrash ? JSON.parse(rawTrash) : [];
     const legacyParsed = legacyTrash.map((r: any) => ({...r, id: String(r.id)}));
 
-    // Combine and deduplicate
     const combined = [...softDeleted, ...legacyParsed];
     const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
     return unique;
   },
 
-  // --- Write Ops (Local + Queue + AutoSync) ---
+  // ==================== Write Ops (Local + Queue + AutoSync) ====================
 
   async save(record: FilmRecord): Promise<void> {
     const raw = localStorage.getItem(STORAGE_KEY);
     const records = raw ? JSON.parse(raw) : [];
     const index = records.findIndex((r: any) => String(r.id) === record.id);
-    
-    // 1. Update Local Storage immediately
+
     if (index >= 0) {
         records[index] = record;
     } else {
@@ -161,28 +215,20 @@ export const storageService = {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
 
-    // 2. Add to Cache Pool
     addToQueue(record.id, 'RECORD', 'UPSERT', record);
-
-    // 3. Real-time Sync (Fire and forget)
     this.triggerSync().catch(console.error);
   },
 
-  // New method to save entire array order
   async saveAllRecords(records: FilmRecord[]): Promise<void> {
       const raw = localStorage.getItem(STORAGE_KEY);
       const allRecords = raw ? JSON.parse(raw) : [];
-      
-      // Update order for the visible records
+
       const updatedRecords = records.map((r, index) => ({ ...r, order: index }));
-      
-      // Merge back with soft-deleted records
       const deletedRecords = allRecords.filter((r: any) => r.isDeleted);
       const finalRecords = [...updatedRecords, ...deletedRecords];
-      
+
       localStorage.setItem(STORAGE_KEY, JSON.stringify(finalRecords));
-      
-      // Queue UPSERT for all updated records to sync order
+
       updatedRecords.forEach(r => {
           addToQueue(r.id, 'RECORD', 'UPSERT', r);
       });
@@ -195,12 +241,10 @@ export const storageService = {
     const index = records.findIndex((r: any) => String(r.id) === id);
 
     if (index >= 0) {
-        // Soft delete
         records[index].isDeleted = true;
         records[index].updatedAt = Date.now();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
 
-        // Sync UPSERT to cloud (to update isDeleted flag)
         addToQueue(id, 'RECORD', 'UPSERT', records[index]);
         this.triggerSync().catch(console.error);
     }
@@ -210,16 +254,14 @@ export const storageService = {
     const rawStorage = localStorage.getItem(STORAGE_KEY);
     const records = rawStorage ? JSON.parse(rawStorage) : [];
     const index = records.findIndex((r: any) => String(r.id) === id);
-    
+
     let recordToRestore = null;
 
     if (index >= 0) {
-        // Restore soft-deleted
         records[index].isDeleted = false;
         records[index].updatedAt = Date.now();
         recordToRestore = records[index];
     } else {
-        // Check legacy trash
         const rawTrash = localStorage.getItem(TRASH_KEY);
         const legacyTrash = rawTrash ? JSON.parse(rawTrash) : [];
         const legacyIndex = legacyTrash.findIndex((r: any) => String(r.id) === id);
@@ -228,8 +270,7 @@ export const storageService = {
             recordToRestore.isDeleted = false;
             recordToRestore.updatedAt = Date.now();
             records.unshift(recordToRestore);
-            
-            // Remove from legacy trash
+
             legacyTrash.splice(legacyIndex, 1);
             localStorage.setItem(TRASH_KEY, JSON.stringify(legacyTrash));
         }
@@ -259,12 +300,12 @@ export const storageService = {
     this.triggerSync().catch(console.error);
   },
 
-  // --- Recipe Ops ---
+  // ==================== Recipe Ops ====================
 
   async saveRecipe(recipe: DevRecipe): Promise<void> {
     const recipes = await this.getRecipes();
     const index = recipes.findIndex(r => r.id === recipe.id);
-    
+
     if (index >= 0) recipes[index] = recipe;
     else recipes.unshift(recipe);
     localStorage.setItem(RECIPE_KEY, JSON.stringify(recipes));
@@ -273,11 +314,10 @@ export const storageService = {
     this.triggerSync().catch(console.error);
   },
 
-  // New method to save entire recipe order
   async saveAllRecipes(recipes: DevRecipe[]): Promise<void> {
       const updatedRecipes = recipes.map((r, index) => ({ ...r, order: index }));
       localStorage.setItem(RECIPE_KEY, JSON.stringify(updatedRecipes));
-      
+
       updatedRecipes.forEach(r => {
           addToQueue(r.id, 'RECIPE', 'UPSERT', r);
       });
@@ -293,12 +333,12 @@ export const storageService = {
     this.triggerSync().catch(console.error);
   },
 
-  // --- Reciprocity Profile Ops ---
+  // ==================== Reciprocity Profile Ops ====================
 
   async saveReciprocityProfile(profile: ReciprocityProfile): Promise<void> {
     const profiles = await this.getReciprocityProfiles();
     const index = profiles.findIndex(p => p.id === profile.id);
-    
+
     if (index >= 0) profiles[index] = profile;
     else profiles.unshift(profile);
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles));
@@ -316,32 +356,34 @@ export const storageService = {
     this.triggerSync().catch(console.error);
   },
 
-  // --- Sync Logic (Process Queue) ---
+  // ==================== Sync Logic ====================
 
   async triggerSync(): Promise<boolean> {
-     // Ensure Supabase is initialized (e.g. if keys were added dynamically)
      if (!supabase) initSupabase();
      if (!supabase) return false;
-     
+
+     // Must be authenticated to sync
+     const { data: { user } } = await supabase.auth.getUser();
+     if (!user) {
+         console.log("[Sync] Skipping: user not authenticated");
+         return false;
+     }
+
      return new Promise((resolve, reject) => {
          if (syncTimeout) clearTimeout(syncTimeout);
-         
+
          syncTimeout = setTimeout(async () => {
              if (isSyncing) {
                  resolve(false);
                  return;
              }
-             
+
              isSyncing = true;
              console.log("[Sync] Started...");
 
              try {
-                 // 1. PULL: Get latest data from Cloud first
-                 await this.pullFromCloud();
-
-                 // 2. PUSH: Process the Cache Pool (Queue)
-                 await this.processQueue();
-                 
+                 await this.pullFromCloud(user.id);
+                 await this.processQueue(user.id);
                  resolve(true);
              } catch (e) {
                  console.error("[Sync] Failed", e);
@@ -349,31 +391,34 @@ export const storageService = {
              } finally {
                  isSyncing = false;
              }
-         }, 1000); // 1-second debounce to prevent network congestion
+         }, 1000);
      });
   },
 
-  async pullFromCloud(): Promise<void> {
+  async pullFromCloud(userId: string): Promise<void> {
       if (!supabase) return;
-      
+
       const queue = getQueue();
       const pendingRecordIds = new Set(queue.filter(q => q.target === 'RECORD').map(q => q.targetId));
       const pendingRecipeIds = new Set(queue.filter(q => q.target === 'RECIPE').map(q => q.targetId));
       const pendingProfileIds = new Set(queue.filter(q => q.target === 'PROFILE').map(q => q.targetId));
 
-      // --- Pull Records ---
-      const { data: cloudRecords, error: err1 } = await supabase.from('film_records').select('*');
+      // --- Pull Records (filtered by user_id) ---
+      const { data: cloudRecords, error: err1 } = await supabase
+          .from('film_records')
+          .select('*')
+          .eq('user_id', userId);
       if (!err1 && cloudRecords) {
           const rawLocal = localStorage.getItem(STORAGE_KEY);
           const localRecords = rawLocal ? JSON.parse(rawLocal) : [];
           const recordMap = new Map<string, any>(localRecords.map((r: any) => [String(r.id), r]));
-          
+
           cloudRecords.forEach((row: any) => {
                if (pendingRecordIds.has(row.id)) return;
                const record = { ...row.data, id: row.id, _synced: true };
                recordMap.set(row.id, record);
           });
-          
+
           const merged = Array.from(recordMap.values()).sort((a: any, b: any) => {
               if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
               return (b.date || 0) - (a.date || 0);
@@ -381,19 +426,22 @@ export const storageService = {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       }
 
-      // --- Pull Recipes ---
-      const { data: cloudRecipes, error: err2 } = await supabase.from('dev_recipes').select('*');
+      // --- Pull Recipes (filtered by user_id) ---
+      const { data: cloudRecipes, error: err2 } = await supabase
+          .from('dev_recipes')
+          .select('*')
+          .eq('user_id', userId);
       if (!err2 && cloudRecipes) {
           const rawLocal = localStorage.getItem(RECIPE_KEY);
           const localRecipes = rawLocal ? JSON.parse(rawLocal) : [];
           const recipeMap = new Map<string, any>(localRecipes.map((r: any) => [String(r.id), r]));
-          
+
           cloudRecipes.forEach((row: any) => {
               if (pendingRecipeIds.has(row.id)) return;
               const recipe = { ...row.data, id: row.id, _synced: true };
               recipeMap.set(row.id, recipe);
           });
-          
+
           const merged = Array.from(recipeMap.values()).sort((a: any, b: any) => {
               if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
               return (b.createdAt || 0) - (a.createdAt || 0);
@@ -401,19 +449,22 @@ export const storageService = {
           localStorage.setItem(RECIPE_KEY, JSON.stringify(merged));
       }
 
-      // --- Pull Reciprocity Profiles ---
-      const { data: cloudProfiles, error: err3 } = await supabase.from('reciprocity_profiles').select('*');
+      // --- Pull Reciprocity Profiles (filtered by user_id) ---
+      const { data: cloudProfiles, error: err3 } = await supabase
+          .from('reciprocity_profiles')
+          .select('*')
+          .eq('user_id', userId);
       if (!err3 && cloudProfiles) {
           const rawLocal = localStorage.getItem(PROFILE_KEY);
           const localProfiles = rawLocal ? JSON.parse(rawLocal) : [];
           const profileMap = new Map<string, any>(localProfiles.map((p: any) => [String(p.id), p]));
-          
+
           cloudProfiles.forEach((row: any) => {
               if (pendingProfileIds.has(row.id)) return;
               const profile = { ...row.data, id: row.id, _synced: true };
               profileMap.set(row.id, profile);
           });
-          
+
           const merged = Array.from(profileMap.values()).sort((a: any, b: any) => {
               if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
               return (b.updatedAt || 0) - (a.updatedAt || 0);
@@ -422,9 +473,9 @@ export const storageService = {
       }
   },
 
-  async processQueue(): Promise<void> {
+  async processQueue(userId: string): Promise<void> {
       if (!supabase) return;
-      
+
       const queueSnapshot = getQueue();
       if (queueSnapshot.length === 0) return;
 
@@ -439,23 +490,23 @@ export const storageService = {
           else continue;
 
           let success = false;
-          
+
           try {
               if (item.action === 'DELETE') {
                   const idStr = String(item.targetId);
-                  const { error } = await supabase.from(table).delete().eq('id', idStr);
+                  const { error } = await supabase.from(table).delete().eq('id', idStr).eq('user_id', userId);
                   if (error) throw error;
                   success = true;
               } else if (item.action === 'UPSERT') {
                   const payload = {
                       id: String(item.targetId),
+                      user_id: userId,
                       updated_at: new Date(item.timestamp).toISOString(),
                       data: item.data
                   };
                   const { error } = await supabase.from(table).upsert(payload);
                   if (error) throw error;
-                  
-                  // Mark as synced locally
+
                   if (item.target === 'RECORD') {
                       const records = await this.getAll();
                       const updated = records.map(r => r.id === item.targetId ? { ...r, _synced: true } : r);
