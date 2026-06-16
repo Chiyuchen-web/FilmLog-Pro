@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark">
+    <title>FilmLog Pro - Analog Photography Log</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            padding: {
+              'safe-top': 'env(safe-area-inset-top)',
+              'safe-bottom': 'env(safe-area-inset-bottom)',
+              'safe-left': 'env(safe-area-inset-left)',
+              'safe-right': 'env(safe-area-inset-right)',
+            },
+            margin: {
+              'safe-top': 'env(safe-area-inset-top)',
+              'safe-bottom': 'env(safe-area-inset-bottom)',
+            },
+            height: {
+              'screen-dynamic': '100dvh',
+            },
+            minHeight: {
+              'screen-dynamic': '100dvh',
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+      }
+
+      /* Darkroom Mode (Safe Light) Styles */
+      html.darkroom-mode {
+        /* 
+           This filter combination turns everything into shades of Red.
+           grayscale: removes color
+           sepia: adds yellow/brown tint
+           hue-rotate(-50deg): shifts sepia towards red
+           saturate(600%): intensifies the red
+           contrast(1.2): improves visibility
+        */
+        filter: grayscale(100%) sepia(100%) hue-rotate(-50deg) saturate(600%) contrast(1.2) brightness(0.9);
+      }
+
+      /* 
+         In Darkroom mode, we want pure black backgrounds to minimize light emission.
+         We override common background utility classes. 
+      */
+      html.darkroom-mode body,
+      html.darkroom-mode .dark\:bg-gray-900,
+      html.darkroom-mode .dark\:bg-gray-800,
+      html.darkroom-mode .bg-white,
+      html.darkroom-mode .bg-gray-50 {
+        background-color: #000 !important;
+        border-color: #333 !important; /* Make borders subtle dark grey (which becomes dark red) */
+      }
+      
+      /* Ensure text is bright enough to become bright red */
+      html.darkroom-mode .text-gray-900,
+      html.darkroom-mode .dark\:text-white,
+      html.darkroom-mode .text-gray-800 {
+        color: #ddd !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
