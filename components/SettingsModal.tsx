@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Key, Save, ExternalLink, Cloud, Loader2, Database, Copy, Check } from 'lucide-react';
+import { X, Key, Save, Cloud, Loader2 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -12,90 +12,19 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-const SQL_SCRIPT = `
--- 1. Create Tables (if not exist)
-create table if not exists film_records (
-  id text primary key,
-  updated_at timestamptz,
-  data jsonb
-);
-
-create table if not exists dev_recipes (
-  id text primary key,
-  updated_at timestamptz,
-  data jsonb
-);
-
-create table if not exists reciprocity_profiles (
-  id text primary key,
-  updated_at timestamptz,
-  data jsonb
-);
-
--- 2. Enable RLS
-alter table film_records enable row level security;
-alter table dev_recipes enable row level security;
-alter table reciprocity_profiles enable row level security;
-
--- 3. DROP OLD POLICIES (Clean slate)
-drop policy if exists "Public Access" on film_records;
-drop policy if exists "Enable read access for all users" on film_records;
-drop policy if exists "Enable insert for all users" on film_records;
-drop policy if exists "Enable update for all users" on film_records;
-drop policy if exists "Enable delete for all users" on film_records;
-
-drop policy if exists "Public Access" on dev_recipes;
-drop policy if exists "Enable read access for all users" on dev_recipes;
-drop policy if exists "Enable insert for all users" on dev_recipes;
-drop policy if exists "Enable update for all users" on dev_recipes;
-drop policy if exists "Enable delete for all users" on dev_recipes;
-
-drop policy if exists "Enable read access for all users" on reciprocity_profiles;
-drop policy if exists "Enable insert for all users" on reciprocity_profiles;
-drop policy if exists "Enable update for all users" on reciprocity_profiles;
-drop policy if exists "Enable delete for all users" on reciprocity_profiles;
-
--- 4. CREATE EXPLICIT POLICIES (Granular control)
-
--- Film Records Policies
-create policy "Enable read access for all users" on film_records for select using (true);
-create policy "Enable insert for all users" on film_records for insert with check (true);
-create policy "Enable update for all users" on film_records for update using (true) with check (true);
-create policy "Enable delete for all users" on film_records for delete using (true);
-
--- Dev Recipes Policies
-create policy "Enable read access for all users" on dev_recipes for select using (true);
-create policy "Enable insert for all users" on dev_recipes for insert with check (true);
-create policy "Enable update for all users" on dev_recipes for update using (true) with check (true);
-create policy "Enable delete for all users" on dev_recipes for delete using (true);
-
--- Reciprocity Profiles Policies
-create policy "Enable read access for all users" on reciprocity_profiles for select using (true);
-create policy "Enable insert for all users" on reciprocity_profiles for insert with check (true);
-create policy "Enable update for all users" on reciprocity_profiles for update using (true) with check (true);
-create policy "Enable delete for all users" on reciprocity_profiles for delete using (true);
-`;
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { t } = useLanguage();
   const { showToast } = useToast();
-  const [apiKey, setApiKey] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [isTesting, setIsTesting] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      const storedKey = localStorage.getItem('filmlog_gemini_key');
-      if (storedKey) setApiKey(storedKey);
-
       const storedSbKey = localStorage.getItem('filmlog_supabase_key');
-      // Set default Key if not stored
       setSupabaseKey(storedSbKey || 'sb_publishable_qXuAT3dkSzzotjdaWA9Stg_zY4g2RwE');
 
       const storedSbUrl = localStorage.getItem('filmlog_supabase_url');
-      // Set default URL if not stored
       setSupabaseUrl(storedSbUrl || 'https://uvszhvoixngxkfvglgsu.supabase.co');
     }
   }, [isOpen]);
@@ -119,26 +48,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const handleSave = () => {
     try {
-        localStorage.setItem('filmlog_gemini_key', apiKey.trim());
         localStorage.setItem('filmlog_supabase_key', supabaseKey.trim());
         localStorage.setItem('filmlog_supabase_url', supabaseUrl.trim());
-        
+
         storageService.reloadConfig();
         showToast(t('settings.saved'), 'success');
-        
+
         setTimeout(() => {
           onClose();
         }, 500);
     } catch (e) {
         showToast('Failed to save settings', 'error');
     }
-  };
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SQL_SCRIPT);
-    setCopied(true);
-    showToast('SQL script copied', 'success');
-    setTimeout(() => setCopied(false), 2000);
   };
 
   if (!isOpen) return null;
@@ -204,55 +125,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {t('settings.cloud_hint')}
                  </p>
                </div>
-            </div>
-            
-            {/* Database Setup Help */}
-            <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-800/30">
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400 flex items-center gap-2">
-                        <Database className="w-4 h-4" /> SQL Setup (Required)
-                    </h4>
-                    <button 
-                        onClick={handleCopySql} 
-                        className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
-                    >
-                        {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copied ? 'Copied' : 'Copy SQL'}
-                    </button>
-                </div>
-                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mb-3">
-                    Copy this code and run it in the <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="underline font-bold">Supabase SQL Editor</a> to create the required tables and public access policies.
-                </p>
-                <div className="bg-gray-800 rounded-lg p-3 overflow-x-auto">
-                    <pre className="text-[10px] font-mono text-gray-300 leading-relaxed whitespace-pre">{SQL_SCRIPT}</pre>
-                </div>
-            </div>
-
-            {/* AI Section */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {t('settings.api_key')}
-              </label>
-              <Input
-                type="password"
-                placeholder={t('settings.api_key_placeholder')}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="font-mono"
-              />
-              <div className="flex justify-between items-start mt-2">
-                 <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">
-                    {t('settings.api_key_hint')}
-                 </p>
-                 <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                 >
-                    {t('settings.get_key')} <ExternalLink className="w-3 h-3" />
-                 </a>
-              </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700">
